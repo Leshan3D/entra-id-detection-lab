@@ -1,0 +1,43 @@
+signin_detections.spl
+############################################################
+# Sign-in Detection Query
+# Purpose: Detect failed sign-ins to differentiate brute force vs. password spray
+############################################################
+
+index="task-1" sourcetype="azure:aad:signin"
+| where status.errorCode != 0
+| stats count 
+        by userPrincipalName, ipAddress, status.errorCode
+| sort - count
+
+
+mfa_bypass.spl
+############################################################
+# MFA Bypass Detection Query
+# Purpose: Identify MFA fatigue (prompt bombing) attempts
+############################################################
+
+index="task-4" sourcetype="azure:aad:signin" 
+( status.errorCode = 50074 
+  OR status.errorCode = 50076 
+  OR status.errorCode = 500121 )
+| stats count as mfa_failures 
+        values(status.errorCode) as errorCodes 
+        by userPrincipalName, ipAddress
+| sort - mfa_failures
+
+
+0auth_abuse.spl
+############################################################
+# OAuth Abuse Detection Query
+# Purpose: Detect malicious OAuth consents and highlight risky scopes
+############################################################
+
+index="main" sourcetype="azure:aad:audit" activityDisplayName = "Consent to application"
+| eval initiator          = coalesce('initiatedBy.user.userPrincipalName','initiatedBy.app.displayName')
+| eval appName            = 'targetResources{}.displayName'
+| eval permissionsGranted = 'targetResources{}.modifiedProperties{}.newValue'
+| table _time, initiator, appName, permissionsGranted
+| sort - _time
+
+
